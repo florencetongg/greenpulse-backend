@@ -1,9 +1,0 @@
-# ==========================================
-# requirements.txt
-# Save this file as: requirements.txt
-# (in same folder as server_cloud.py)
-# ==========================================
-flask
-flask-cors
-opencv-python-headless
-requests
