@@ -1,0 +1,113 @@
+# ==========================================
+# requirements.txt
+# Save this file as: requirements.txt
+# (in same folder as server_cloud.py)
+# ==========================================
+flask
+flask-cors
+opencv-python-headless
+requests
+
+
+# ==========================================
+# Procfile
+# Save this file as: Procfile  (NO extension)
+# (in same folder as server_cloud.py)
+# ==========================================
+web: python server_cloud.py
+
+
+# ==========================================
+# DEPLOYMENT CHECKLIST
+# ==========================================
+
+STEP 1 — DEPLOY BACKEND TO RENDER
+----------------------------------
+Files to upload to GitHub repo "greenpulse-backend":
+  ✅ server_cloud.py
+  ✅ requirements.txt
+  ✅ Procfile
+
+Render settings:
+  Name:          greenpulse-backend
+  Runtime:       Python 3
+  Build Command: pip install -r requirements.txt
+  Start Command: python server_cloud.py
+  Plan:          Free
+
+After deploy, test:
+  https://greenpulse-backend.onrender.com/rooms
+  → Should show JSON room data ✅
+
+
+STEP 2 — UPDATE FLUTTER URL
+----------------------------
+In webcam_service.dart, line 1:
+  const String kServerUrl = 'https://greenpulse-backend.onrender.com';
+
+In camera_view_final.dart:
+  static const String _serverBase = 'https://greenpulse-backend.onrender.com';
+
+In vision_ai_service.dart:
+  static const String _baseUrl = 'https://greenpulse-backend.onrender.com';
+
+
+STEP 3 — ADD IMPORTS to your dashboard files
+---------------------------------------------
+At top of manager_dashboard.dart AND staff_dashboard.dart:
+
+  import 'dart:ui' as ui;
+  import 'dart:html' as html;
+  import 'dart:convert';
+  import 'dart:async';
+  import 'package:http/http.dart' as http;
+  import 'services/webcam_service.dart';
+
+
+STEP 4 — ENABLE WEB CAMERA PERMISSION
+--------------------------------------
+Open: web/index.html
+
+Inside <head>, add:
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+Flutter web handles getUserMedia automatically —
+browser will show the "Allow Camera" popup when
+audience opens the app. ✅
+
+
+STEP 5 — BUILD AND DEPLOY TO VERCEL
+-------------------------------------
+  flutter build web --release
+  cd build/web
+  vercel --prod
+
+Public URL: https://greenpulse.vercel.app ✅
+
+
+STEP 6 — WHAT AUDIENCE EXPERIENCES
+-------------------------------------
+1. Audience opens greenpulse.vercel.app
+2. They click 👁 on Room B2 (Break Room)
+3. Browser asks "Allow camera access?" 
+4. Audience clicks Allow
+5. Their webcam appears LIVE in the dialog
+6. Every 5 seconds, frame sent to Google Vision AI
+7. People count + confidence updates in real time
+8. If room shows empty, waste alert triggers on dashboard
+
+Other rooms (A1, A2, B1, C1, C2):
+- Show stock office photos from Unsplash
+- Show static occupancy data
+- No camera permission needed
+
+
+STEP 7 — DEMO TALKING POINTS
+------------------------------
+"Our system uses Google Cloud Vision API to analyze
+real-time camera feeds. Room B2 uses the viewer's
+live webcam to demonstrate people detection —
+you can see the AI counting people in real time
+with confidence scores. In a real deployment,
+each room would have a dedicated IP camera feeding
+into the same Vision AI pipeline."
