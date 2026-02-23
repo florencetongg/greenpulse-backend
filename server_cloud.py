@@ -6,6 +6,7 @@ import requests as req_lib
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
+import urllib.request
 
 app = Flask(__name__)
 CORS(app, origins="*")
@@ -284,13 +285,22 @@ def get_snapshot(room_id):
         "timestamp":    datetime.datetime.now().strftime("%H:%M:%S"),
     })
 
+def keep_alive():
+    while True:
+        try:
+            urllib.request.urlopen('https://greenpulse-backend-m417.onrender.com/rooms')
+            print('[KeepAlive] Pinged server ✅')
+        except:
+            pass
+        time.sleep(840)  # 14 minutes
 
 # ==========================================
 # START
 # ==========================================
 if __name__ == "__main__":
-    threading.Thread(target=preload_all_fake_images, daemon=True).start()
-
+    #threading.Thread(target=preload_all_fake_images, daemon=True).start()
+    threading.Thread(target=keep_alive, daemon=True).start()
+    
     print("=" * 55)
     print("[Server] ✅ GreenPulse Vision AI Backend (Cloud Mode)")
     print("[Server] 📷 B2 = audience browser webcam")
