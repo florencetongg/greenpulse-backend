@@ -394,3 +394,163 @@ Open: **[http://localhost:8501](http://localhost:8501)**
 
 > "Disable **Use API endpoint** in the sidebar. The dashboard runs `LangGraphSupervisor` in-process — same agents, same audit log, with a visible warning banner."
 
+---
+
+## Required topics — direct answers
+
+Use this section when the panel asks specifically, or as a closing summary before Q&A.
+
+### 1. Dataset label
+
+| Item | Detail |
+|------|--------|
+| **Source** | Kaggle — *Fake Social Media Account Detection Dataset* (`fake_social_media_global_2.0_with_missing.csv`) |
+| **Label column** | `is_fake` |
+| **0** | Authentic account |
+| **1** | Fake / inauthentic account |
+| **Distribution** | 1,941 authentic (64.7%) · 1,059 fake (35.3%) — 3,000 rows total |
+| **Split** | 80% train (2,400) / 20% test (600), stratified on `is_fake`, seed 42 |
+| **Critical rule** | Labels are **evaluation only** — unsupervised models never use `is_fake` during scoring |
+
+**One-line answer:**
+
+> "Our label is `is_fake`: zero means authentic, one means fake. We have three thousand profiles from Kaggle. Labels exist only to validate on a held-out test set — the agent pipeline scores uploads without seeing labels, like a real B2B deployment."
+
+**Show:** `data/processed/data_summary.json` (lines 7–18) · `src/feature_engineer.py` (lines 262–269)
+
+---
+
+### 2. If given time — future improvements
+
+| Priority | Improvement | Why |
+|----------|-------------|-----|
+| 1 | **Live Instagram / social API connector** | Move from static CSV to real-time profile data |
+| 2 | **Semi-supervised tuning** | Let analysts relabel flagged accounts to tune thresholds per industry |
+| 3 | **SHAP explainability** | Per-feature attribution in the forensic PDF, not just a score |
+| 4 | **Multi-platform support** | Extend features to TikTok, YouTube, X |
+| 5 | **Production hardening** | Async job queues, S3/GCS artifact storage, stronger rate limiting |
+
+**One-line answer:**
+
+> "With more time, we'd connect live social APIs, let analysts feed back labels to improve thresholds, add SHAP per-feature explanations, support more platforms, and harden for production with job queues and cloud storage."
+
+**Show:** `PROJECT_REPORT.md` §12 (lines 346–360)
+
+---
+
+### 3. Agent logic
+
+Six agents orchestrated by a **LangGraph `StateGraph`** supervisor. Shared `InvestigationState` carries the dataframe, scores, and audit log between nodes.
+
+```text
+START → Forensic Analyst → Statistician → Behavioral Analyst
+      → Risk Scoring Agent → NLP Investigator → Report Writer → END
+```
+
+| Agent | Role | Tool / output |
+|-------|------|---------------|
+| Forensic Analyst | EDA, log-normal validation | `run_eda()` |
+| Statistician | PCA + Isolation Forest + LOF | `perform_pca_and_outlier_detection()` |
+| Behavioral Analyst | Fill missing behavioral columns | `spam_to_generic_ratio`, `engagement_anomaly_score`, etc. |
+| Risk Scoring Agent | Explainable risk bands | `risk_band`: low / medium / high |
+| NLP Investigator | Caption, spam, username signals | `generate_lexical_diversity_score()` |
+| Report Writer | Audit-ready deliverable | Markdown + PDF forensic report |
+
+**Scoring:**
+
+```text
+ML authenticity     = (1 − normalized_anomaly_score) × 100
+Final authenticity  = ML × 0.85 + behavioral/NLP × 0.15
+```
+
+**Fallback:** If LangGraph fails → deterministic `InvestigationPipeline`. No LLM key required for default demo.
+
+**One-line answer:**
+
+> "A LangGraph supervisor runs six agents in sequence — EDA, PCA/outlier detection, behavioral checks, risk bands, NLP scoring, and PDF report — blending ML at eighty-five percent and behavioral signals at fifteen percent."
+
+**Show:** `supervisor/langgraph_supervisor.py` (lines 202–217) · `src/unsupervised_modeling.py` (105–113) · `src/nlp_analyzer.py` (30–32, 314–323)
+
+---
+
+### 4. How the agent gets data
+
+```text
+Kaggle CSV  →  Phase 1 (feature engineering)  →  data/processed/train_features.csv
+                                                         data/processed/test_features.csv
+                                                              ↓
+User CSV  →  Streamlit dashboard  →  POST /api/v1/investigate  →  LangGraphSupervisor.investigate(df)
+              (or local fallback if API offline)                         ↓
+                                                              6 agents score + write reports/
+```
+
+| Entry path | How | File |
+|------------|-----|------|
+| **Offline prep** | `run_phase1_data_prep.py --download` from Kaggle | `src/data_loader.py` |
+| **Demo** | Sidebar → Load sample (`train_features.csv`, 2,400 rows) | `src/dashboard.py` line 39 |
+| **Production use** | Analyst uploads CSV or calls API | `api/main.py` lines 199–218 |
+| **Single profile** | `POST /api/v1/investigate/single` with JSON | `api/main.py` |
+
+Inside one run: CSV → `pandas DataFrame` → `validate_input_dataframe()` → `supervisor.investigate(df)` → shared state through all 6 nodes → artifacts in `reports/agent_runs/`.
+
+**One-line answer:**
+
+> "Data comes from Kaggle CSV preprocessed in Phase 1, or live via dashboard upload / API POST. The API reads the CSV into a dataframe and passes it to the LangGraph supervisor, which routes it through all six agents."
+
+**Show:** `src/dashboard.py` (185–199) · `api/main.py` (199–218)
+
+---
+
+### 5. Special component to highlight — audit log
+
+**Why it matters:** Most ML tools return a score. We return a **traceable investigation** suitable for B2B compliance.
+
+Every run produces an ordered `audit_log`:
+
+```text
+[Supervisor] LangGraph workflow START
+[1/6 Forensic Analyst] tool=run_eda
+[3/6 Statistical Analyst] complete — profiles=50, mean_authenticity=72.4%
+[5/6 NLP Investigator] complete — mean_nlp=68.1%
+[6/6 Executive Report Writer] complete — pdf=reports/agent_runs/forensic_report_....pdf
+```
+
+| Where it appears | Format |
+|------------------|--------|
+| API JSON response | `audit_log: list[str]` |
+| Dashboard | **Agent Audit Log** tab |
+| Disk | `reports/agent_runs/investigation_summary.json` |
+
+Built by `_log()` in each LangGraph node — not optional logging, it is a first-class deliverable.
+
+**One-line answer:**
+
+> "Our standout feature is the audit log — every investigation records which agent ran, which tool was called, and what was produced. Compliance teams can trace the full pipeline without reading code, and the same log appears in the API, dashboard, and saved JSON."
+
+**Show:** `src/dashboard.py` (534–538) · `AGENT_DECISION_TRACES.md` (14–32) · `supervisor/langgraph_supervisor.py` (79–83)
+
+---
+
+### 6. How long did the project take?
+
+| Phase | Period | Deliverable |
+|-------|--------|-------------|
+| Phase 1 | 22 Apr 2026 | Data prep + feature engineering |
+| Phase 2 | 4 May 2026 | EDA + log-normal validation |
+| Phase 3 | 5 May 2026 | PCA, Isolation Forest, LOF |
+| Phase 4 | 13–19 May 2026 | Behavioral / NLP scoring |
+| Phase 0 & 5 | 21–27 May 2026 | LangGraph agents + FastAPI + Streamlit |
+| Phase 6–7 | 1–8 Jun 2026 | Forensic reports, E2E tests, CI, documentation |
+
+**Total: ~7 weeks** (22 April – 8 June 2026)
+
+- 7 phases (0 through 7)
+- 25 pytest cases
+- GitHub Actions CI on every push
+- Group 11 — tasks split across team members by phase
+
+**One-line answer:**
+
+> "Roughly seven weeks from late April to early June — seven phases from data prep through agents, dashboard, API, forensic reports, and CI. We split work by phase across the group."
+
+**Show:** `PROJECT_REPORT.md` §8.1 (lines 227–238)
